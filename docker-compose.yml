@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: openfleetpilot_postgres
+    environment:
+      POSTGRES_USER: dev_user
+      POSTGRES_DB: devdb
+      POSTGRES_PASSWORD: dev_fleet_123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d devdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  redis:
+    image: redis:7
+    container_name: openfleetpilot_redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dev_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  openfleetpilot_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: open_fleet_pilot
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/app/src
+      - ./CMakeLists.txt:/app/CMakeLists.txt
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=devdb
+      - DB_USER=dev_user
+      - DB_PASSWORD=dev_fleet_123
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LOG_LEVEL=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - dev_network
+    # command: >
+    #   sh -c "cd build && cmake .. && make -j$(nproc) && .bin/openfleetpilot"
+  
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  dev_network:
+    driver: bridge

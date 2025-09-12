@@ -1,0 +1,134 @@
+name: Development CI
+
+on:
+  push:
+    branches:
+      - main
+      - tests
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DB_HOST: localhost
+  DB_PORT: 5432
+  DB_NAME: devdb
+  DB_USER: dev_user
+  DB_PASSWORD: dev_fleet_123
+
+jobs:
+  setup-env:
+    name: SetUp Environment
+    runs-on: ubuntu-22.04
+    outputs:
+      db_ready: ${{ steps.wait_for_progress_outputs.db_ready }}
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: dev_user
+          POSTGRES_DB: devdb
+          POSTGRES_PASSWORD: dev_fleet_123
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U dev_user -d devdb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    
+    steps:
+      - name: Wait for db to be healthy
+        id: wait_for_postgres
+        run: |
+          for i in {1..20}; do
+            pg_isready -h localhost -p 5432 -U dev_user && echo "::set-output name=db_ready::true" && exit 0
+            echo "Waiting for PostgreSQL..."
+            sleep 3
+          done
+          echo "::set-output name =db_ready::false"
+          exit 1
+  
+  build:
+    name: Build Software
+    runs-on: ubuntu-22.04
+    needs: setup-env
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Dockerhub
+        uses: docker/login-aciton@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      # - name: Use the Docker Container from the releases
+      - name: Pull pre-built Image
+        run: docker pull ${{ secrets.DOCKER_USERNAME }}/openFleetPilot:latest
+
+        # - name: Install Dependencies
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libpqxx-dev cmake g++
+      
+      - name: Build with CMake (Inside Container)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            -e DB_HOST=${{ env.DB_HOST }} \
+            -e DB_PORT=${{ env.DB_PORT }} \
+            -e DB_NAME=${{ env.DB_NAME }} \
+            -e DB_USER=${{ env.DB_USER }}\
+            -e DB_PASSWORD=${{ env.DB_PASSWORD }} \
+            ${{ secrets.DOCKER_USERNAME}}/openfleetpilot:latest \
+            bash -c "mkdir -p build && cd build && cmake .. && make"
+      
+      - name: Archive Build Artifacts
+        uses: action/upload-artifact@v3
+        with:
+          name: fms_build
+          path: build/fms
+  
+  lint:
+    name: code style check
+    runs-on: ubuntu-22.04
+    needs: build
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Clang-Format
+        run: sudo apt-get install -y clang-format
+
+      - name: Run clang-format check
+        run: |
+          find src include -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run -Werror
+      
+  test:
+    name: Run DB Connection Test
+    runs-on: ubuntu-22.04
+    needs: [setup-env, build]
+
+    steps:
+      - name: Download Build Artifacts
+        uses: action/download-artifact@v3
+        with:
+          name: fms_build
+          path: ./build
+      
+      - name: Run DB Connection Artifacts
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: devdb
+          DB_USER: dev_user
+          DB_PASSWORD: dev_fleet_123
+        run: |
+          ./build/fms
