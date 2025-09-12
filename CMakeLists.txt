@@ -16,5 +16,5 @@ pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 # add_executable()
 
 # Link libraries
-target_link_libraries(fleet_mgmt ${LIBPQXX_LIBRARIES} ${YAMLCPP_LIBRARIES})
-target_include_directories(fleet_mgmt PUBLIC ${LIBPQXX_INCLUDE_DIRS} ${YAMLCPP_INCLUDE_DIRS})
+target_link_libraries(fms ${LIBPQXX_LIBRARIES} ${YAMLCPP_LIBRARIES})
+target_include_directories(fms PUBLIC ${LIBPQXX_INCLUDE_DIRS} ${YAMLCPP_INCLUDE_DIRS})
