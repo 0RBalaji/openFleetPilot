@@ -93,7 +93,7 @@ jobs:
             -e DB_USER=${{ env.DB_USER }} \
             -e DB_PASSWORD=${{ env.DB_PASSWORD }} \
             ${{ env.DOCKER_IMAGE }} \
-            bash -c "mkdir -p build && cd build && cmake .. && make"
+            bash -c "mkdir -p build && cd build && cmake .. && make" \
       
       - name: Archive Build Artifacts
         uses: actions/upload-artifact@v4
@@ -139,3 +139,7 @@ jobs:
           DB_NETWORK: ${{ env.DB_NETWORK }}
         run: |
           ./build/fms
+      
+      - name: Test the container
+        run: |
+          doceker run --it ${{ env.DOCKER_IMAGE }} ./fms

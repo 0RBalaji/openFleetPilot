@@ -13,7 +13,7 @@ pkg_check_modules(LIBPQXX REQUIRED libpqxx)
 pkg_check_modules(YAMLCPP REQUIRED yaml-cpp)
 
 # Executable target
-# add_executable()
+add_executable(fms src/main.cpp)
 
 # Link libraries
 target_link_libraries(fms ${LIBPQXX_LIBRARIES} ${YAMLCPP_LIBRARIES})
