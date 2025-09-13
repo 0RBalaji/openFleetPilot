@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  DB_HOST: postgres
+  DB_HOST: localhost
   DB_PORT: 5432
   DB_NAME: devdb
   DB_USER: dev_user
@@ -40,28 +40,20 @@ jobs:
           --health-retries=5
     
     steps:
-      - name: Install Postgres client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Wait for DB to be healthy
         id: wait_for_postgres
         run: |
-          for i in {1..20}; do
-            if pg_isready -h postgres -p 5432 -U $DB_USER; then
-              echo "db_ready=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
+          until pg_isready -h localhost -p 5432 -U testuser; do
             echo "Waiting for PostgreSQL..."
             sleep 5
           done
-          echo "db_ready=false" >> $GITHUB_OUTPUT
-          exit 1
+          echo "PostgreSQL is ready!"
 
-      # - name: Compose build
-      #   run: docker compose build
-      
-      # - name: Compose Up
-      #   run: docker compose up -d
+      - name: Connect to PostgreSQL and run a simple query
+        run: |
+          PGPASSWORD=${{ secrets.DB_PASSWORD }} psql -h ${{ secrets.DB_HOST }} -p ${{ secrets.DB_PORT }} -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -c "SELECT 1;"
+
   
   build:
     name: Build Software
