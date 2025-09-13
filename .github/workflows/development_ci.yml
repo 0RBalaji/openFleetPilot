@@ -15,7 +15,7 @@ env:
   DB_USER: dev_user
   DB_PASSWORD: dev_fleet_123
   DB_NETWORK: dev_network
-  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/openFleetPilot:latest
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/openfleetpilot:latest
 
 jobs:
   setup-env:
@@ -96,7 +96,7 @@ jobs:
             bash -c "mkdir -p build && cd build && cmake .. && make"
       
       - name: Archive Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: fms_build
           path: build/fms
@@ -124,7 +124,7 @@ jobs:
 
     steps:
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: fms_build
           path: ./build
