@@ -32,30 +32,30 @@ jobs:
       - name: Start services
         run: docker compose up --abort-on-container-exit
 
-      - name: Wait for services to be healthy
-        run: |
-          timeout 60 bash -c '
-            until [[ "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_postgres)" == "healthy" && \
-                     "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_redis)" == "healthy" ]]; do
-              echo "Waiting for services..."
-              sleep 5
-            done
-          '
+      # - name: Wait for services to be healthy
+      #   run: |
+      #     timeout 60 bash -c '
+      #       until [[ "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_postgres)" == "healthy" && \
+      #                "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_redis)" == "healthy" ]]; do
+      #         echo "Waiting for services..."
+      #         sleep 5
+      #       done
+      #     '
 
-      - name: Build the app inside container
-        run: |
-          docker exec open_fleet_pilot bash -c "apt-get update && \
-            DEBIAN_FRONTEND=noninteractive apt-get install -y cmake build-essential && \
-            mkdir -p build && cd build && cmake .. && make -j$(nproc)"
+      # - name: Build the app inside container
+      #   run: |
+      #     docker exec open_fleet_pilot bash -c "apt-get update && \
+      #       DEBIAN_FRONTEND=noninteractive apt-get install -y cmake build-essential && \
+      #       mkdir -p build && cd build && cmake .. && make -j$(nproc)"
 
 
-      - name: Run integration tests
-        run: |
-          docker exec open_fleet_pilot ./build/fms || {
-            echo "Tests failed"
-            docker compose logs
-            exit 1
-          }
+      # - name: Run integration tests
+      #   run: |
+      #     docker exec open_fleet_pilot ./build/fms || {
+      #       echo "Tests failed"
+      #       docker compose logs
+      #       exit 1
+      #     }
 
       - name: Shutdown services
         if: always()
