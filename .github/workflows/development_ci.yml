@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  DB_HOST: postgres
+  DB_HOST: localhost
   DB_PORT: 5432
   DB_NAME: devdb
   DB_USER: dev_user
