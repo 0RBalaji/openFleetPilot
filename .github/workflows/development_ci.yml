@@ -18,93 +18,52 @@ env:
   DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/openfleetpilot:latest
 
 jobs:
-  setup-env:
-    name: SetUp Environment
+  test:
+    name: Run Application Test
     runs-on: ubuntu-22.04
-    outputs:
-      db_ready: ${{ steps.wait_for_postgres.outputs.db_ready }}
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: ${{ env.DB_USER }}
-          POSTGRES_DB: ${{ env.DB_NAME }}
-          POSTGRES_PASSWORD: ${{ env.DB_PASSWORD }}
-        ports:
-          - 5432:5432
-        # networks:
-        #   - dev_network
-        options: >-
-          --health-cmd pg_isready
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-    
-    steps:
-      - name: Create Shared DB Network
-        run: docker network create ${{ env.DB_NETWORK }}
 
-      - name: Wait for DB to be healthy
-        id: wait_for_postgres
-        run: |
-          until pg_isready -h $DB_HOST -p 5432 -U $DB_USER; do
-            echo "Waiting for PostgreSQL..."
-            sleep 5
-          done
-          echo "PostgreSQL is ready!"
+    steps:      
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Connect to PostgreSQL and run a simple query
-        run: |
-          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h ${{ env.DB_HOST }} -p ${{ env.DB_PORT }} -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} -n ${{ env.DB_NETWORK }} -c "SELECT 1;"
-
-  
-  build:
-    name: Build Software
-    runs-on: ubuntu-22.04
-    needs: setup-env
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Setup Docker Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      
-      - name: Login to Dockerhub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      # - name: Use the Docker Container from the releases
-      - name: Pull pre-built Image
-        run: docker pull ${{ env.DOCKER_IMAGE }}
-      
-      - name: Build with CMake (Inside Container)
+
+      - name: Start services
+        run: docker compose up --abort-on-container-exit
+
+      - name: Wait for services to be healthy
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            -e DB_HOST=${{ env.DB_HOST }} \
-            -e DB_PORT=${{ env.DB_PORT }} \
-            -e DB_NAME=${{ env.DB_NAME }} \
-            -e DB_USER=${{ env.DB_USER }} \
-            -e DB_PASSWORD=${{ env.DB_PASSWORD }} \
-            --network ${{ env.DB_NETWORK }} \
-            ${{ env.DOCKER_IMAGE }} \
-            bash -c "mkdir -p build && cd build && cmake .. && make" \
-      
-      - name: Archive Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fms_build
-          path: build/fms
-  
+          timeout 60 bash -c '
+            until [[ "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_postgres)" == "healthy" && \
+                     "$(docker inspect -f {{.State.Health.Status}} openfleetpilot_redis)" == "healthy" ]]; do
+              echo "Waiting for services..."
+              sleep 5
+            done
+          '
+
+      - name: Build the app inside container
+        run: |
+          docker exec open_fleet_pilot bash -c "apt-get update && \
+            DEBIAN_FRONTEND=noninteractive apt-get install -y cmake build-essential && \
+            mkdir -p build && cd build && cmake .. && make -j$(nproc)"
+
+
+      - name: Run integration tests
+        run: |
+          docker exec open_fleet_pilot ./build/fms || {
+            echo "Tests failed"
+            docker compose logs
+            exit 1
+          }
+
+      - name: Shutdown services
+        if: always()
+        run: docker compose down -v
+
   lint:
     name: code style check
     runs-on: ubuntu-22.04
-    needs: build
 
     steps:
       - name: Checkout Code
@@ -115,33 +74,4 @@ jobs:
 
       - name: Run clang-format check
         run: |
-          find src -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run -Werror
-
-  test:
-    name: Run DB Connection Test
-    runs-on: ubuntu-22.04
-    needs: [setup-env, build]
-
-    steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: fms_build
-          path: ./build
-
-      - name: Make fms executable
-        run: chmod +x ./build/fms
-
-      # - name: Run DB
-      #   run: ./build/fms
-      
-      - name: Run DB Connection Artifacts
-        env:
-          DB_HOST: ${{ env.DB_HOST }}}
-          DB_PORT: ${{ env.DB_PORT }}
-          DB_NAME: ${{ env.DB_NAME }}
-          DB_USER: ${{ env.DB_USER }}
-          DB_PASSWORD: ${{ env.DB_PASSWORD }}
-          DB_NETWORK: ${{ env.DB_NETWORK }}
-        run: |
-          docker run -v ${{ github.workspace }}:/app -w /app ${{ env.DOCKER_IMAGE }} ./build/fms
+          find src -name "*.cpp" -o -name "*.hpp" | xargs clang-format -Werror

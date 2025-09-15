@@ -24,7 +24,7 @@ services:
     container_name: openfleetpilot_redis
     command: redis-server --appendonly yes
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -62,8 +62,11 @@ services:
         condition: service_healthy
     networks:
       - dev_network
-    # command: >
-    #   sh -c "cd build && cmake .. && make -j$(nproc) && .bin/openfleetpilot"
+    # command: sleep infinity
+    # command: /bin/bash -c "while true; do sleep 1000; done"
+    command: >
+      sh -c "mkdir -p build && cd build && cmake .. && make -j$(nproc) && ./fms"
+      
   
 volumes:
   postgres_data:
