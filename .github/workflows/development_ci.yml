@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  DB_HOST: localhost
+  DB_HOST: postgres
   DB_PORT: 5432
   DB_NAME: devdb
   DB_USER: dev_user
@@ -33,6 +33,8 @@ jobs:
           POSTGRES_PASSWORD: ${{ env.DB_PASSWORD }}
         ports:
           - 5432:5432
+        # networks:
+        #   - dev_network
         options: >-
           --health-cmd pg_isready
           --health-interval=10s
@@ -40,10 +42,13 @@ jobs:
           --health-retries=5
     
     steps:
+      - name: Create Shared DB Network
+        run: docker network create ${{ env.DB_NETWORK }}
+
       - name: Wait for DB to be healthy
         id: wait_for_postgres
         run: |
-          until pg_isready -h localhost -p 5432 -U testuser; do
+          until pg_isready -h $DB_HOST -p 5432 -U $DB_USER; do
             echo "Waiting for PostgreSQL..."
             sleep 5
           done
@@ -51,7 +56,7 @@ jobs:
 
       - name: Connect to PostgreSQL and run a simple query
         run: |
-          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h ${{ env.DB_HOST }} -p ${{ env.DB_PORT }} -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} -c "SELECT 1;"
+          PGPASSWORD=${{ env.DB_PASSWORD }} psql -h ${{ env.DB_HOST }} -p ${{ env.DB_PORT }} -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} -n ${{ env.DB_NETWORK }} -c "SELECT 1;"
 
   
   build:
@@ -86,6 +91,7 @@ jobs:
             -e DB_NAME=${{ env.DB_NAME }} \
             -e DB_USER=${{ env.DB_USER }} \
             -e DB_PASSWORD=${{ env.DB_PASSWORD }} \
+            --network ${{ env.DB_NETWORK }} \
             ${{ env.DOCKER_IMAGE }} \
             bash -c "mkdir -p build && cd build && cmake .. && make" \
       
@@ -116,21 +122,6 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [setup-env, build]
 
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: testdb
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
     steps:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
@@ -146,7 +137,7 @@ jobs:
       
       - name: Run DB Connection Artifacts
         env:
-          DB_HOST: postgres
+          DB_HOST: ${{ env.DB_HOST }}}
           DB_PORT: ${{ env.DB_PORT }}
           DB_NAME: ${{ env.DB_NAME }}
           DB_USER: ${{ env.DB_USER }}
